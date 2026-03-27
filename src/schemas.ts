@@ -38,7 +38,8 @@ export const filters = z.string().optional().describe("Filter expression, e.g. y
 export const sort = z.string().optional().describe("Sort field with optional - prefix for descending, e.g. -ym:s:visits");
 
 export const limit = z.number().min(1).max(10000).default(100).describe("Rows per page (max 10000)");
-export const offset = z.number().min(1).default(1).describe("Offset (1-based)");
+// Yandex Metrika API uses 1-based offset (first row = 1), unlike Direct which uses 0-based
+export const offset = z.number().min(1).default(1).describe("Offset (1-based, per Metrika API spec)");
 
 export const accuracy = z.enum(["low", "medium", "high", "full"]).default("full").describe("Sampling accuracy");
 export const lang = z.enum(["ru", "en", "tr", "uk"]).optional().describe("Response language");

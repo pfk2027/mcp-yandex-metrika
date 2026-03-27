@@ -11,8 +11,8 @@ export class HttpError extends Error {
     public readonly path: string,
     public readonly body: string,
   ) {
-    const truncated = body.length > 500 ? body.slice(0, 500) + "..." : body;
-    super(`API ${status} ${method} /${path}: ${truncated}`);
+    // Sanitize: don't expose raw API response body in error message
+    super(`API error ${status} on ${method} request (use HttpError.body for details)`);
     this.name = "HttpError";
   }
 
@@ -70,29 +70,28 @@ function validatePath(path: string): void {
 // --- Retry helper ---
 
 async function withRetry<T>(fn: () => Promise<T>, retries = MAX_RETRIES): Promise<T> {
-  let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (e) {
-      lastError = e;
       if (e instanceof HttpError && e.isRetryable && attempt < retries) {
-        const delay = RETRY_BASE_MS * Math.pow(2, attempt);
+        // Cap delay at 30s; add jitter (±20%) to prevent thundering herd
+        const base = Math.min(RETRY_BASE_MS * Math.pow(2, attempt), 30_000);
+        const delay = base * (0.8 + Math.random() * 0.4);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
       throw e;
     }
   }
-  throw lastError;
+  // Unreachable: loop always returns or throws, but TypeScript needs this
+  throw new Error("withRetry: exhausted all attempts");
 }
 
 // --- Param setter (avoids Object.entries allocation) ---
 
 function setParams(url: URL, params: Record<string, string>): void {
-  const keys = Object.keys(params);
-  for (let i = 0; i < keys.length; i++) {
-    const k = keys[i];
+  for (const k in params) {
     const v = params[k];
     if (v !== undefined && v !== "") url.searchParams.set(k, v);
   }
@@ -184,7 +183,7 @@ export function parseJsonSafe(data: string): [unknown, null] | [null, McpError] 
   try {
     return [JSON.parse(data), null];
   } catch (e) {
-    return [null, { content: [{ type: "text" as const, text: `Error: invalid JSON — ${e instanceof Error ? e.message : e}` }] }];
+    return [null, { content: [{ type: "text" as const, text: "Error: invalid JSON input. Ensure value is valid JSON." }] }];
   }
 }
 
